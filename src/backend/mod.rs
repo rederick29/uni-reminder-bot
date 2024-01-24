@@ -10,4 +10,3 @@ pub(crate) fn load_data_from_path(path: &PathBuf) -> Result<ReminderTable, Error
     let reminders: ReminderTable = serde_cbor::from_reader(file)?;
     Ok(reminders)
 }
-

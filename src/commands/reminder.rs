@@ -1,23 +1,35 @@
-use std::{time::{SystemTime, Duration}, collections::HashMap, sync::{Arc, Mutex}};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+    time::{Duration, SystemTime},
+};
 
 use poise::{
     serenity_prelude::{
-        self as serenity, CreateEmbed, FormattedTimestamp, FormattedTimestampStyle, Timestamp, parse_role_mention, RoleId, Mention, Http, Cache, ChannelId, GuildId,
+        self as serenity, parse_role_mention, Cache, ChannelId, CreateEmbed, FormattedTimestamp,
+        FormattedTimestampStyle, GuildId, Http, Mention, RoleId, Timestamp,
     },
     CreateReply,
 };
 use tokio::task::JoinHandle;
 
 use crate::{
-    backend::data::{Interval, Reminder, Repeat, ReminderTable},
+    backend::data::{Interval, Reminder, ReminderTable, Repeat},
     commands::{get_data, send_reminder},
     Context, Error,
 };
 
 // Creates an async task to send a reminder at the correct time.
 // Implicitly stores the task handle for the created task in the `task` parameter.
-// awful way of doing this but I cannot thing of any better way without unsafe
-async fn schedule_reminder_message(guild_id: GuildId, channel_id: ChannelId, cache_http: (Arc<Cache>, Arc<Http>), reminder: Reminder, reminders: Arc<Mutex<ReminderTable>>, tasks: Arc<Mutex<HashMap<Reminder, JoinHandle<()>>>>) -> Result<(), Error> {
+// awful way of doing this but I cannot think of any better way without unsafe
+async fn schedule_reminder_message(
+    guild_id: GuildId,
+    channel_id: ChannelId,
+    cache_http: (Arc<Cache>, Arc<Http>),
+    reminder: Reminder,
+    reminders: Arc<Mutex<ReminderTable>>,
+    tasks: Arc<Mutex<HashMap<Reminder, JoinHandle<()>>>>,
+) -> Result<(), Error> {
     // destructure cache_http for cloning later
     let (cache, http) = cache_http;
     let target = reminder.target_date;
@@ -29,7 +41,8 @@ async fn schedule_reminder_message(guild_id: GuildId, channel_id: ChannelId, cac
     };
 
     // hacky way of getting a duration from a unix timestamp
-    let sleep_duration = (SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp as u64)).duration_since(SystemTime::now())?;
+    let sleep_duration = (SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp as u64))
+        .duration_since(SystemTime::now())?;
 
     // cloning for use in the async move block
     let reminder_clone = reminder.clone();
@@ -37,7 +50,12 @@ async fn schedule_reminder_message(guild_id: GuildId, channel_id: ChannelId, cac
 
     let handle = tokio::spawn(async move {
         tokio::time::sleep(sleep_duration).await;
-        let _ = send_reminder(channel_id, (&(cache.clone()), &(http.clone())), &reminder_clone).await;
+        let _ = send_reminder(
+            channel_id,
+            (&(cache.clone()), &(http.clone())),
+            &reminder_clone,
+        )
+        .await;
 
         // for repeating reminders, reminder needs to be updated and a new task needs to be spawned
         match reminder_clone.repeating {
@@ -67,11 +85,34 @@ async fn schedule_reminder_message(guild_id: GuildId, channel_id: ChannelId, cac
                     // https://github.com/rust-lang/rust/issues/78649#issuecomment-1264353351
                     // recursive aync is not allowed in rust. so I used the workaround above
                     #[inline(always)]
-                    fn recurse_schedule(guild_id: GuildId, channel_id: ChannelId, cache: Arc<Cache>, http: Arc<Http>, new_reminder: Reminder, reminders: Arc<Mutex<ReminderTable>>, tasks_clone: Arc<Mutex<HashMap<Reminder, JoinHandle<()>>>>) -> poise::BoxFuture<'static, Result<(), Error>> {
-                        Box::pin(schedule_reminder_message(guild_id, channel_id, (cache, http) , new_reminder, reminders, tasks_clone))
+                    fn recurse_schedule(
+                        guild_id: GuildId,
+                        channel_id: ChannelId,
+                        cache: Arc<Cache>,
+                        http: Arc<Http>,
+                        new_reminder: Reminder,
+                        reminders: Arc<Mutex<ReminderTable>>,
+                        tasks_clone: Arc<Mutex<HashMap<Reminder, JoinHandle<()>>>>,
+                    ) -> poise::BoxFuture<'static, Result<(), Error>> {
+                        Box::pin(schedule_reminder_message(
+                            guild_id,
+                            channel_id,
+                            (cache, http),
+                            new_reminder,
+                            reminders,
+                            tasks_clone,
+                        ))
                     }
-                    let _ = recurse_schedule(guild_id, channel_id, cache.clone(), http.clone(), new_reminder, reminders.clone(), tasks_clone).await;
-
+                    let _ = recurse_schedule(
+                        guild_id,
+                        channel_id,
+                        cache.clone(),
+                        http.clone(),
+                        new_reminder,
+                        reminders.clone(),
+                        tasks_clone,
+                    )
+                    .await;
                 }
             }
             None => {
@@ -109,15 +150,16 @@ pub(crate) async fn add(
     #[description = "Target Channel"]
     #[channel_types("Text")]
     channel: Option<serenity::GuildChannel>,
-    #[description = "Space-separated list of roles to be mentioned."]
-    roles: Option<String>
+    #[description = "Space-separated list of roles to be mentioned."] roles: Option<String>,
 ) -> Result<(), Error> {
     let mut reply = CreateReply::default();
 
-    let roles = roles.map(|roles| roles
-        .split_whitespace()
-        .filter_map(parse_role_mention)
-        .collect::<Vec<RoleId>>());
+    let roles = roles.map(|roles| {
+        roles
+            .split_whitespace()
+            .filter_map(parse_role_mention)
+            .collect::<Vec<RoleId>>()
+    });
 
     if datetime <= chrono::Utc::now().timestamp() {
         reply = reply
@@ -171,10 +213,24 @@ pub(crate) async fn add(
     // create reminder and schedule it
     let reminder = Reminder::from_context(&ctx, datetime, repeat, name, roles, text);
     {
-        if let Err(e) = data.lock().unwrap().add_reminder(guild_id, channel_id, reminder.clone()) {
-            reply = reply.content(format!("An error occured: {}", e)).ephemeral(true);
+        if let Err(e) = data
+            .lock()
+            .unwrap()
+            .add_reminder(guild_id, channel_id, reminder.clone())
+        {
+            reply = reply
+                .content(format!("An error occured: {}", e))
+                .ephemeral(true);
         }
-        let _ = schedule_reminder_message(guild_id, channel_id, (cache, http), reminder, data.data.clone(), data.tasks.clone()).await;
+        let _ = schedule_reminder_message(
+            guild_id,
+            channel_id,
+            (cache, http),
+            reminder,
+            data.data.clone(),
+            data.tasks.clone(),
+        )
+        .await;
     }
 
     reply = reply.content("Added!").ephemeral(true);
@@ -277,7 +333,8 @@ pub(crate) async fn remove(
             .find(|(i, _)| *i == (id - 1) as usize)
         {
             let mut lock = ctx.data().lock().unwrap();
-            lock.remove_reminder(guild_id, channel_id, reminder).unwrap();
+            lock.remove_reminder(guild_id, channel_id, reminder)
+                .unwrap();
             {
                 let mut lock = ctx.data().tasks.lock().unwrap();
                 let handle = lock.remove(reminder).unwrap();
@@ -285,10 +342,14 @@ pub(crate) async fn remove(
             }
             reply = reply.content("Removed!");
         } else {
-            reply = reply.content(format!("Reminder id {} was not found in this channel.", id)).ephemeral(true);
+            reply = reply
+                .content(format!("Reminder id {} was not found in this channel.", id))
+                .ephemeral(true);
         }
     } else {
-        reply = reply.content("No reminders have been set for this channel.").ephemeral(true);
+        reply = reply
+            .content("No reminders have been set for this channel.")
+            .ephemeral(true);
     }
 
     ctx.send(reply).await?;
@@ -376,7 +437,7 @@ pub(crate) async fn info(
                             .for_each(|mention: Mention| text += &format!("{} ", mention));
                         text
                     }
-                    None => "No roles attached.".to_string()
+                    None => "No roles attached.".to_string(),
                 };
 
                 let repeat_info = match repeating {

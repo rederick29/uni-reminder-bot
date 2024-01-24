@@ -1,17 +1,21 @@
 pub(crate) mod backend;
 pub(crate) mod commands;
 
-use crate::{backend::data::{ReminderTable, Reminder}, commands::reminder::reminder};
+use crate::{
+    backend::data::{Reminder, ReminderTable},
+    commands::reminder::reminder,
+};
 use poise::{
     serenity_prelude::{Cache, Client, FullEvent, GatewayIntents, Http},
     FrameworkContext,
 };
-use tokio::task::JoinHandle;
 use std::{
+    collections::HashMap,
     ops::Deref,
     path::PathBuf,
-    sync::{Arc, Mutex}, collections::HashMap,
+    sync::{Arc, Mutex},
 };
+use tokio::task::JoinHandle;
 
 // Accept any error type as error type
 type Error = Box<dyn std::error::Error + Send + Sync>;

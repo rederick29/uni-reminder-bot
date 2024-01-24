@@ -1,6 +1,6 @@
 use crate::{Context, Error};
 use poise::serenity_prelude::{
-    ChannelId, FormattedTimestamp, FormattedTimestampStyle, GuildId, Timestamp, UserId, RoleId,
+    ChannelId, FormattedTimestamp, FormattedTimestampStyle, GuildId, RoleId, Timestamp, UserId,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -16,7 +16,9 @@ use std::{
     Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, poise::ChoiceParameter,
 )]
 pub(crate) enum Interval {
-    #[cfg(debug_assertions)] FiveMinutesly, /// For testing purposes
+    #[cfg(debug_assertions)]
+    FiveMinutesly,
+    /// For testing purposes
     Hourly,
     Daily,
     Weekly,
@@ -59,7 +61,10 @@ impl Repeat {
         #[allow(unreachable_patterns)]
         let offset_date = match self.interval {
             #[cfg(debug_assertions)]
-            FiveMinutesly => NaiveDateTime::from_timestamp_opt(timestamp.timestamp() + (300 * self.index as i64), 0),
+            FiveMinutesly => NaiveDateTime::from_timestamp_opt(
+                timestamp.timestamp() + (300 * self.index as i64),
+                0,
+            ),
             Hourly => NaiveDateTime::from_timestamp_opt(timestamp.timestamp(), 0),
             Daily => naive_date.checked_add_days(Days::new(self.index as u64)),
             Weekly => naive_date.checked_add_days(Days::new(7 * self.index as u64)),
@@ -162,8 +167,16 @@ impl Reminder {
             repeating,
             name,
             // put None if empty
-            roles: if roles.as_ref().is_some_and(|v| !v.is_empty()) { roles } else { None },
-            description: if description.as_ref().is_some_and(|s| !s.is_empty()) { description } else { None },
+            roles: if roles.as_ref().is_some_and(|v| !v.is_empty()) {
+                roles
+            } else {
+                None
+            },
+            description: if description.as_ref().is_some_and(|s| !s.is_empty()) {
+                description
+            } else {
+                None
+            },
         }
     }
 
